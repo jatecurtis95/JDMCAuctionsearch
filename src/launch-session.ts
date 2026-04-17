@@ -23,29 +23,16 @@
 // automatically by the SDK.
 // ============================================================================
 
-import Anthropic from "@anthropic-ai/sdk";
+// Using raw fetch for the managed-agents-2026-04-01 beta API surface.
+// The pinned @anthropic-ai/sdk does not yet type sessions.create, session
+// events, or vault credentials, so we call the endpoints directly until
+// the SDK catches up.
 
 // ---- Types ------------------------------------------------------------------
 
 interface ManagedAgentSession {
   id: string;
 }
-interface ManagedAgentsClient {
-  sessions: {
-    create(params: {
-      agent: string;
-      environment_id: string;
-      title?: string;
-    }): Promise<ManagedAgentSession>;
-    events: {
-      create(
-        sessionId: string,
-        body: { type: "user_message"; content: string },
-      ): Promise<unknown>;
-    };
-  };
-}
-
 interface McpServer {
   type: "url";
   url: string;
@@ -104,29 +91,66 @@ async function mintGraphBearer(
   return json.access_token;
 }
 
-// ---- Anthropic agent update (raw fetch, SDK does not yet cover this) --------
+// ---- Session create (raw fetch, SDK does not yet cover managed-agents) ------
+// We construct the request directly so we can pass mcp_servers inline with
+// per-server authorization_token values. Once Anthropic SDK types land for
+// the managed-agents beta, this can collapse back into client.sessions.create.
+// See known follow-up: migrate to vault-based credentials per the docs at
+// https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/managed-agents-overview.md
 
-async function updateAgentMcpServers(
+async function createSession(
   apiKey: string,
-  agentId: string,
-  mcpServers: McpServer[],
-): Promise<void> {
-  const url = `https://api.anthropic.com/v1/agents/${agentId}`;
-  const res = await fetch(url, {
-    method: "PATCH",
+  body: {
+    agent: string;
+    environment_id: string;
+    title: string;
+    mcp_servers: McpServer[];
+  },
+): Promise<ManagedAgentSession> {
+  const res = await fetch("https://api.anthropic.com/v1/sessions", {
+    method: "POST",
     headers: {
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
       "anthropic-beta": "managed-agents-2026-04-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify({ mcp_servers: mcpServers }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(
-      `Agent mcp_servers update failed: HTTP ${res.status}: ${errText}`,
+      `Session create failed: HTTP ${res.status}: ${errText}`,
+    );
+  }
+
+  return (await res.json()) as ManagedAgentSession;
+}
+
+async function sendKickoff(
+  apiKey: string,
+  sessionId: string,
+  content: string,
+): Promise<void> {
+  const res = await fetch(
+    `https://api.anthropic.com/v1/sessions/${sessionId}/events`,
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta": "managed-agents-2026-04-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ type: "user_message", content }),
+    },
+  );
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(
+      `Kickoff event failed: HTTP ${res.status}: ${errText}`,
     );
   }
 }
@@ -167,8 +191,7 @@ async function main(): Promise<void> {
   );
   console.log(`Graph bearer minted, length ${graphBearer.length}.`);
 
-  console.log("Updating agent mcp_servers with fresh authorization tokens...");
-  await updateAgentMcpServers(ANTHROPIC_API_KEY, AGENT_ID, [
+  const mcpServers: McpServer[] = [
     {
       type: "url",
       url: "https://mcp.supabase.com/mcp",
@@ -187,24 +210,20 @@ async function main(): Promise<void> {
       name: "m365",
       authorization_token: graphBearer,
     },
-  ]);
-  console.log("Agent mcp_servers updated.");
+  ];
 
-  // Session create and kickoff
-  const client = new Anthropic({
-    apiKey: ANTHROPIC_API_KEY,
-  }) as unknown as ManagedAgentsClient;
-
+  console.log("Creating session with inline mcp_servers...");
   const now = new Date().toISOString();
-  const session = await client.sessions.create({
+  const session = await createSession(ANTHROPIC_API_KEY, {
     agent: AGENT_ID,
     environment_id: ENV_ID,
     title: `auction-scout ${now}`,
+    mcp_servers: mcpServers,
   });
+  console.log(`Session created: ${session.id}`);
 
-  await client.sessions.events.create(session.id, {
-    type: "user_message",
-    content: `Run the auction scout now.
+  await sendKickoff(ANTHROPIC_API_KEY, session.id,
+    `Run the auction scout now.
 
 Source: ${AUCTION_SOURCE}
 Window: listings updated in the last 24 hours.
@@ -226,8 +245,7 @@ MCP authorization:
   authorization_token on each mcp_server entry. You do not need to pass
   tokens yourself, the MCP layer handles it.
 
-Follow your system prompt. Emit session.status_idle when done.`,
-  });
+Follow your system prompt. Emit session.status_idle when done.`);
 
   console.log(`Launched session ${session.id}`);
 }
