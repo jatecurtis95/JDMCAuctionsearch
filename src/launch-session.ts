@@ -144,43 +144,27 @@ async function sendKickoff(
     "content-type": "application/json",
   };
 
-  // The POST body wraps the event in an events array with a dotted type.
-  // Source: https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/managed-agents-events.md
-  // The inner event shape is still not documented, so we probe a few
-  // variations inside the wrapper. First one that returns 2xx wins.
-  const innerCandidates: object[] = [
-    { type: "user.message", content: text },
-    { type: "user.message", text },
-    {
-      type: "user.message",
-      message: { role: "user", content: [{ type: "text", text }] },
-    },
-    { type: "user.message", message: { role: "user", content: text } },
-    {
-      type: "user.message",
-      content: [{ type: "text", text }],
-    },
-  ];
-
-  let lastErr = "";
-  for (const inner of innerCandidates) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ events: [inner] }),
-    });
-    if (res.ok) {
-      console.log(
-        `Kickoff accepted, inner shape keys: ${Object.keys(inner).join(",")}`,
-      );
-      return;
-    }
-    lastErr = `HTTP ${res.status}: ${await res.text()}`;
-    console.log(
-      `Kickoff inner shape ${JSON.stringify(Object.keys(inner))} rejected: ${lastErr}`,
-    );
+  // Body shape verified end to end on dispatch run 24556570636:
+  //   { events: [ { type: "user.message", content: [ { type: "text", text } ] } ] }
+  // The events-array wrapper and dotted event type come from the
+  // managed-agents skills doc, the array-of-text-blocks content shape
+  // matches the Messages API.
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      events: [
+        {
+          type: "user.message",
+          content: [{ type: "text", text }],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Kickoff event failed: HTTP ${res.status}: ${errText}`);
   }
-  throw new Error(`All kickoff shapes failed. Last: ${lastErr}`);
 }
 
 // ---- Main -------------------------------------------------------------------

@@ -18,12 +18,10 @@ name: auction-scout
 # Quoted to avoid YAML 1.1 boolean coercion of the bare word 'on' in
 # strict linters. GitHub Actions accepts either form.
 "on":
-  # Schedule disabled until the kickoff event shape is resolved. See
-  # KNOWN OPEN ISSUE in src/launch-session.ts and the "Resume" section
-  # in CLAUDE.md. Re-enable by uncommenting the schedule block.
-  #
-  # schedule:
-  #   - cron: "0 1 * * *"   # 09:00 AWST daily, AWST has no DST
+  schedule:
+    # Once daily, 09:00 AWST (Perth) == 01:00 UTC.
+    # AWST has no DST, so this is drift free year round.
+    - cron: "0 1 * * *"
   workflow_dispatch: {}
 
 permissions:
