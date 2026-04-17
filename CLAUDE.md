@@ -1,5 +1,20 @@
 # CLAUDE.md
 
+## Resume here (open issue, blocking first run)
+
+The launcher creates a session successfully but cannot send the kickoff event. Six dispatched runs as of 2026-04-17 evening confirm:
+
+- `POST /v1/sessions` accepts `{agent, environment_id, title}`. Inline `mcp_servers` is rejected (`Extra inputs are not permitted`).
+- `POST /v1/sessions/:id/events` rejects every body shape probed: `{type:"user_message", content}` (the brief's shape), `{type, message:{role,content[]}}`, `{type, message:{role,content}}`, `{type, text}`, `{type, input}`, `{type, body}`, `{type, value}`, `{type:"message", role, content}`, `{input:{role,content}}`. All return HTTP 400 with "X: Extra inputs are not permitted".
+- `POST /v1/sessions/:id/messages` returns HTTP 404 (path does not exist).
+- `PATCH /v1/agents/:id` returns HTTP 404, the agent is immutable post-create. MCP auth flows through vaults instead per [docs](https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/managed-agents-overview.md).
+
+To resume: open `node_modules/@anthropic-ai/sdk/` and find the `sessions.events.create` (or equivalent) implementation, or check the official Anthropic API reference in the Console. Once the correct body shape is known, replace the stub in `sendKickoff` in `src/launch-session.ts` and uncomment the schedule block in `.github/workflows/auction-scout.yml`.
+
+Once the kickoff works, the next architectural cleanup is to migrate the three credentials (Supabase PAT, Notion integration secret, Microsoft Graph) from the kickoff-message smuggle pattern to the proper Anthropic vault pattern (`POST /v1/vaults`, `POST /v1/vaults/:id/credentials`, attach via `vault_ids` on session create). That re-enables the hosted MCP tools so the agent can use `supabase_query` / `notion_append_block` / `m365_send_mail` instead of bash + curl.
+
+
+
 Context and rules for any Claude session (Claude Code, Cursor, Cowork) working on this repo.
 
 ## Project
