@@ -1,0 +1,58 @@
+# ============================================================================
+# .github/workflows/auction-scout.yml
+# ----------------------------------------------------------------------------
+# Daily scheduled launcher for the jdmc-auction-scout Managed Agent.
+# Brief ref: JDMC_Auction_Agent_Handover_Brief.md section 9.
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   ANTHROPIC_API_KEY   Anthropic Console API key
+#   JDMC_AGENT_ID       id returned by scripts/create-agent.sh
+#   JDMC_ENV_ID         id returned by scripts/create-environment.sh
+#
+# The launcher itself just creates a session and exits within seconds.
+# The agent's actual run happens inside Anthropic's managed container
+# and has its own 20 to 40 minute working window per brief section 11.
+# ============================================================================
+name: auction-scout
+
+# Quoted to avoid YAML 1.1 boolean coercion of the bare word 'on' in
+# strict linters. GitHub Actions accepts either form.
+"on":
+  schedule:
+    # Once daily, 09:00 AWST (Perth) == 01:00 UTC.
+    # AWST has no DST, so this is drift free year round.
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auction-scout
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: launch session
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: install deps
+        run: npm ci
+
+      - name: launch agent session
+        run: npx tsx src/launch-session.ts
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JDMC_AGENT_ID:     ${{ secrets.JDMC_AGENT_ID }}
+          JDMC_ENV_ID:       ${{ secrets.JDMC_ENV_ID }}
+          AUCTION_SOURCE:    USS
