@@ -97,8 +97,8 @@ jobs:
           M365_CLIENT_SECRET:        ${{ secrets.M365_CLIENT_SECRET }}
           # Dynamic targets (optional, launcher has safe defaults)
           NOTION_DATABASE_ID:             ${{ secrets.NOTION_DATABASE_ID }}
-          NOTION_AUCTION_SCOUT_DS_ID:     ${{ secrets.NOTION_AUCTION_SCOUT_DS_ID }}
-          NOTION_WATCHLIST_DS_ID:         ${{ secrets.NOTION_WATCHLIST_DS_ID }}
+          NOTION_AUCTION_SCOUT_DB_ID:     ${{ secrets.NOTION_AUCTION_SCOUT_DB_ID }}
+          NOTION_WATCHLIST_DB_ID:         ${{ secrets.NOTION_WATCHLIST_DB_ID }}
           SUPABASE_PROJECT_ID:            ${{ secrets.SUPABASE_PROJECT_ID }}
           ALERT_EMAIL:                    ${{ secrets.ALERT_EMAIL }}
           ALERT_FROM_MAILBOX:             ${{ secrets.ALERT_FROM_MAILBOX }}

@@ -213,9 +213,13 @@ function sel(prop: unknown): string | null {
 
 async function fetchWatchlist(
   notionToken: string,
-  watchlistDataSourceId: string,
+  watchlistDatabaseId: string,
 ): Promise<WatchlistEntry[]> {
-  const url = `https://api.notion.com/v1/data_sources/${watchlistDataSourceId}/query`;
+  // Legacy Notion API uses /v1/databases/:id/query. The newer
+  // /v1/data_sources/:id/query exists in later API versions but is not
+  // available under Notion-Version 2022-06-28 which we pin here for
+  // stability across the rest of the agent's tool calls.
+  const url = `https://api.notion.com/v1/databases/${watchlistDatabaseId}/query`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -327,10 +331,10 @@ async function main(): Promise<void> {
   // they can change without touching the agent definition.
   const NOTION_DATABASE_ID   = process.env.NOTION_DATABASE_ID
     ?? "f08e1ac7-f179-4407-9e1f-8b3c232f10d1";
-  const NOTION_AUCTION_SCOUT_DS_ID = process.env.NOTION_AUCTION_SCOUT_DS_ID
-    ?? "969496d0-4c6d-4b60-96a9-cabfbd83a22a";
-  const NOTION_WATCHLIST_DS_ID = process.env.NOTION_WATCHLIST_DS_ID
-    ?? "ae89c441-913a-4c13-b6d0-df225c883697";
+  const NOTION_AUCTION_SCOUT_DB_ID = process.env.NOTION_AUCTION_SCOUT_DB_ID
+    ?? "f08e1ac7-f179-4407-9e1f-8b3c232f10d1";
+  const NOTION_WATCHLIST_DB_ID = process.env.NOTION_WATCHLIST_DB_ID
+    ?? "f9176ff3-cd8b-4e06-9ea8-34903e27b8dc";
   const SUPABASE_PROJECT_ID  = process.env.SUPABASE_PROJECT_ID
     ?? "rrvuxgajwaxadwwolgox";
   const ALERT_EMAIL          = process.env.ALERT_EMAIL
@@ -341,7 +345,7 @@ async function main(): Promise<void> {
   console.log("Fetching active client watchlist from Notion...");
   const watchlist = await fetchWatchlist(
     NOTION_INTEGRATION_SECRET,
-    NOTION_WATCHLIST_DS_ID,
+    NOTION_WATCHLIST_DB_ID,
   );
   console.log(`Watchlist rows fetched: ${watchlist.length}`);
 
