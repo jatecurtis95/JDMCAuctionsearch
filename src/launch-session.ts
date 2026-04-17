@@ -213,18 +213,17 @@ function sel(prop: unknown): string | null {
 
 async function fetchWatchlist(
   notionToken: string,
-  watchlistDatabaseId: string,
+  watchlistDataSourceId: string,
 ): Promise<WatchlistEntry[]> {
-  // Legacy Notion API uses /v1/databases/:id/query. The newer
-  // /v1/data_sources/:id/query exists in later API versions but is not
-  // available under Notion-Version 2022-06-28 which we pin here for
-  // stability across the rest of the agent's tool calls.
-  const url = `https://api.notion.com/v1/databases/${watchlistDatabaseId}/query`;
+  // Notion deprecated /v1/databases in favor of /v1/data_sources as of
+  // Notion-Version 2025-09-03. Current minor is 2026-03-11. The filter
+  // and body shape are unchanged, only the path and Notion-Version bumped.
+  const url = `https://api.notion.com/v1/data_sources/${watchlistDataSourceId}/query`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${notionToken}`,
-      "Notion-Version": "2022-06-28",
+      "Notion-Version": "2026-03-11",
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -331,10 +330,18 @@ async function main(): Promise<void> {
   // they can change without touching the agent definition.
   const NOTION_DATABASE_ID   = process.env.NOTION_DATABASE_ID
     ?? "f08e1ac7-f179-4407-9e1f-8b3c232f10d1";
+  // DATABASE ids (containers) and DATA SOURCE ids (the queryable collections
+  // under each database). As of Notion API 2025-09-03, data_source_id is
+  // what you pass to /v1/data_sources/:id/query and to parent refs on
+  // /v1/pages POSTs. The database_id stays useful only for human URLs.
   const NOTION_AUCTION_SCOUT_DB_ID = process.env.NOTION_AUCTION_SCOUT_DB_ID
     ?? "f08e1ac7-f179-4407-9e1f-8b3c232f10d1";
+  const NOTION_AUCTION_SCOUT_DATA_SOURCE_ID = process.env.NOTION_AUCTION_SCOUT_DATA_SOURCE_ID
+    ?? "969496d0-4c6d-4b60-96a9-cabfbd83a22a";
   const NOTION_WATCHLIST_DB_ID = process.env.NOTION_WATCHLIST_DB_ID
     ?? "f9176ff3-cd8b-4e06-9ea8-34903e27b8dc";
+  const NOTION_WATCHLIST_DATA_SOURCE_ID = process.env.NOTION_WATCHLIST_DATA_SOURCE_ID
+    ?? "ae89c441-913a-4c13-b6d0-df225c883697";
   const SUPABASE_PROJECT_ID  = process.env.SUPABASE_PROJECT_ID
     ?? "rrvuxgajwaxadwwolgox";
   const ALERT_EMAIL          = process.env.ALERT_EMAIL
@@ -345,7 +352,7 @@ async function main(): Promise<void> {
   console.log("Fetching active client watchlist from Notion...");
   const watchlist = await fetchWatchlist(
     NOTION_INTEGRATION_SECRET,
-    NOTION_WATCHLIST_DB_ID,
+    NOTION_WATCHLIST_DATA_SOURCE_ID,
   );
   console.log(`Watchlist rows fetched: ${watchlist.length}`);
 
@@ -448,10 +455,14 @@ ${JSON.stringify(watchlist, null, 2)}
   Storage base: https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1
   Tables: auction_hits, auction_photos, agent_runs
   Buckets: auction-photos, auction-sheets
-- Notion database id: ${NOTION_DATABASE_ID}
-  database name: "Auction Scout"
+- Notion "Auction Scout" database
+  database_id:   ${NOTION_AUCTION_SCOUT_DB_ID}  (for human URLs only)
+  data_source_id: ${NOTION_AUCTION_SCOUT_DATA_SOURCE_ID}  (use this for API writes)
   REST base: https://api.notion.com/v1
-  Notion-Version header required: 2022-06-28
+  Notion-Version header required: 2026-03-11
+  To create a page in the Auction Scout database, POST /v1/pages with
+  parent: { "type": "data_source_id", "data_source_id": "${NOTION_AUCTION_SCOUT_DATA_SOURCE_ID}" }.
+  Legacy parent.database_id is rejected by the current Notion API version.
 - Email from mailbox: ${ALERT_FROM_MAILBOX}
   Email to: ${ALERT_EMAIL}
   Graph base: https://graph.microsoft.com/v1.0
