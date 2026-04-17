@@ -1,0 +1,104 @@
+# CLAUDE.md
+
+Context and rules for any Claude session (Claude Code, Cursor, Cowork) working on this repo.
+
+## Project
+
+**jdmc-auction-scout** is an autonomous auction monitoring agent built on Anthropic Managed Agents. It runs once daily at 09:00 AWST, pulls the previous 24 hours of Japanese car auction listings from one configured source, translates each auction sheet, checks SEVS and MRE eligibility, estimates landed cost and margin, scores the opportunity, and writes qualified hits to Supabase and a Notion "Auction Scout" database. A summary email goes to `jate@jdmconnect.com.au` via Microsoft 365.
+
+## Owner
+
+Jate Curtis, JDM Connect Pty Ltd (Perth, WA).
+Contact: `jate@jdmconnect.com.au`.
+Also operates Teefinder, which is unrelated to this repo.
+
+## Source of truth
+
+The canonical spec is [`JDMC_Auction_Agent_Handover_Brief.md`](./JDMC_Auction_Agent_Handover_Brief.md) at repo root. When in doubt, read the brief. Section references used in commits and file headers point back into it:
+
+- Section 4: Supabase schema, see `supabase/migrations/20260417_auction_scout.sql`
+- Section 6: agent definition, see `scripts/create-agent.sh`
+- Section 7: agent system prompt, see `agent/system-prompt.md`
+- Section 8: environment config, see `scripts/create-environment.sh`
+- Section 9: session launcher and cron workflow, see `src/launch-session.ts` and `.github/workflows/auction-scout.yml`
+- Section 14: handover checklist, the out of band console items tracked in the scaffolding PR
+
+Do not paraphrase the brief into other files. If something needs to change, change the brief first, then the code, in that order.
+
+## House rules
+
+1. **No em dashes anywhere.** Not in code, comments, commit messages, PR descriptions, email copy, agent outputs, or chat replies. Use commas, colons, parentheses, or split the sentence. This applies to U+2014 (em) and U+2013 (en). Hyphen-minus (`-`) is fine. A quick scan before commit: `grep -RnP "[\x{2013}\x{2014}]" .`.
+2. **No secrets in the repo.** All credentials live in env vars or GitHub Actions secrets. `.gitignore` excludes `.env`, `.env.*` (except `.env.example`), and the session-local `.gh_pat` stash. If you see a token in a diff, stop and rewrite.
+3. **One task per turn, push as you go.** Long multi-task sessions have timed out in the past. Commit and push after each logical chunk. Prefer new commits over amends.
+4. **Idempotency first.** The unique constraint `auction_hits(source, source_listing_id)` is the dedup anchor. The agent upserts, never blind-inserts. Migrations use `if not exists`. Re-running scripts should not create dupes.
+5. **Ask before architectural changes.** Swapping the auction source, changing the scoring rubric, adding v2 features from brief section 13, or replacing an MCP server all require sign-off from Jate first.
+
+## Repo layout
+
+```
+.
+  JDMC_Auction_Agent_Handover_Brief.md   canonical spec
+  CLAUDE.md                              this file
+  README.md                              human-facing overview
+  agent/
+    system-prompt.md                     verbatim from brief section 7
+  scripts/
+    create-agent.sh                      POST /v1/agents, run once
+    create-environment.sh                POST /v1/environments, run once
+  src/
+    launch-session.ts                    runs on the cron
+  supabase/
+    migrations/
+      20260417_auction_scout.sql         auction_hits, auction_photos, buckets
+  .github/
+    workflows/
+      auction-scout.yml                  daily cron launcher
+  package.json, package-lock.json, tsconfig.json, .gitignore
+```
+
+## Out of band console steps
+
+These are intentionally not automated. The scripts that exist are one-shot helpers, they are not invoked by CI.
+
+1. Create the Supabase project (or run the migration against existing `jdm-ops-hub`).
+2. Create the Notion "Auction Scout" database with the properties listed in brief section 5.
+3. Create the M365 Graph API app registration for the `imports@jdmconnect.com.au` mailbox.
+4. Run `./scripts/create-agent.sh` once, save the returned id as `JDMC_AGENT_ID`.
+5. Run `./scripts/create-environment.sh` once, save the returned id as `JDMC_ENV_ID`.
+6. Set the GitHub Actions secrets: `ANTHROPIC_API_KEY`, `JDMC_AGENT_ID`, `JDMC_ENV_ID`.
+
+Full checklist in brief section 14.
+
+## Local development
+
+```
+npm ci             # install pinned deps
+npm run typecheck  # strict tsc --noEmit
+npm run launch     # invoke the launcher locally, requires env
+```
+
+The launcher needs `ANTHROPIC_API_KEY`, `JDMC_AGENT_ID`, `JDMC_ENV_ID`, optionally `AUCTION_SOURCE` (defaults to `USS`).
+
+## Commit conventions
+
+Conventional commits, concise subject under ~70 chars, body explains the why. Examples in the current git log:
+
+```
+docs: add JDMC Auction Agent handover brief
+feat(db): add auction_hits and auction_photos migration
+feat(agent): add agent and environment creation scripts
+feat(launcher): add TypeScript session launcher
+ci: add auction-scout daily workflow
+```
+
+Scopes in use: `db`, `agent`, `launcher`, `ci`, `docs`. Keep them stable.
+
+## What not to do
+
+- Do not hardcode an auction source credential, API key, or tenant id.
+- Do not relax the `(source, source_listing_id)` unique constraint.
+- Do not add multi-source scraping in v1 (brief section 13 is explicit).
+- Do not add automated bidding. Ever. Human in the loop is a product requirement, not an implementation detail.
+- Do not resize, recompress, or filter auction photos on the agent side. Store what the source exposes.
+- Do not promise "HD" photos in any output copy. The auction sources only expose roughly 1000px images.
+- Do not send email if the Supabase write failed. Order matters: Supabase, then Notion, then email.
