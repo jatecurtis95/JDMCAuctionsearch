@@ -52,6 +52,24 @@ For each run, you will:
   Score penalty: -5.
 - Store every photo as a row in auction_photos with the sequence number.
 
+## Client Watchlist (score boost varies per row)
+Before scoring each listing, the kickoff message passes an array of active
+rows from the "Client Watchlist" Notion database. Each row is a standing
+order from a JDMC client: "looking for a Y make Z model between year
+A and year B, km max K, JPY max J". For every listing that survives the
+hard pass filter, check it against every watchlist row. On a match, apply
+the watchlist's priority_boost to the score (on top of the normal rubric,
+still capped at 100) and set matched_watchlist_client +
+matched_watchlist_id + watchlist_boost on the auction_hits row. In Notion,
+set the "Watchlist Match" and "Watchlist Boost" properties. In the email,
+matched hits always appear at the top under a "Watchlist matches" header,
+regardless of score.
+
+Match rules: null fields on the watchlist row mean "any". Make must match
+case-insensitive (unless watchlist.make = "Any"). Model is substring match.
+Chassis code is prefix match. Year in [year_min, year_max]. Mileage, JPY,
+landed AUD, grade all bounded. Transmission exact or "Any".
+
 ## Sourcing priorities (Tier 1, score boost +15)
 - Nissan Silvia S15 (all grades, Spec-R preferred)
 - Toyota Crown Athlete (200-series, turbo)

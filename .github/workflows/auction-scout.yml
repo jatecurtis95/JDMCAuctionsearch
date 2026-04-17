@@ -22,7 +22,39 @@ name: auction-scout
     # Once daily, 09:00 AWST (Perth) == 01:00 UTC.
     # AWST has no DST, so this is drift free year round.
     - cron: "0 1 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      # All optional. When any are provided, the launcher switches the
+      # agent into "targeted search" mode on top of the normal scan.
+      # Leave all blank for a standard daily-style run on demand.
+      make:
+        description: "Make (e.g. Toyota, Nissan, Subaru)"
+        required: false
+        type: string
+      model:
+        description: "Model (e.g. Silvia, Crown Athlete)"
+        required: false
+        type: string
+      year_min:
+        description: "Minimum year"
+        required: false
+        type: string
+      year_max:
+        description: "Maximum year"
+        required: false
+        type: string
+      km_max:
+        description: "Maximum mileage in km"
+        required: false
+        type: string
+      jpy_max:
+        description: "Maximum expected winning bid in JPY"
+        required: false
+        type: string
+      note:
+        description: "Freeform extra instructions for the agent"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -64,7 +96,17 @@ jobs:
           M365_CLIENT_ID:            ${{ secrets.M365_CLIENT_ID }}
           M365_CLIENT_SECRET:        ${{ secrets.M365_CLIENT_SECRET }}
           # Dynamic targets (optional, launcher has safe defaults)
-          NOTION_DATABASE_ID:        ${{ secrets.NOTION_DATABASE_ID }}
-          SUPABASE_PROJECT_ID:       ${{ secrets.SUPABASE_PROJECT_ID }}
-          ALERT_EMAIL:               ${{ secrets.ALERT_EMAIL }}
-          ALERT_FROM_MAILBOX:        ${{ secrets.ALERT_FROM_MAILBOX }}
+          NOTION_DATABASE_ID:             ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_AUCTION_SCOUT_DS_ID:     ${{ secrets.NOTION_AUCTION_SCOUT_DS_ID }}
+          NOTION_WATCHLIST_DS_ID:         ${{ secrets.NOTION_WATCHLIST_DS_ID }}
+          SUPABASE_PROJECT_ID:            ${{ secrets.SUPABASE_PROJECT_ID }}
+          ALERT_EMAIL:                    ${{ secrets.ALERT_EMAIL }}
+          ALERT_FROM_MAILBOX:             ${{ secrets.ALERT_FROM_MAILBOX }}
+          # Ad-hoc search inputs from workflow_dispatch (all optional)
+          INPUT_MAKE:     ${{ inputs.make }}
+          INPUT_MODEL:    ${{ inputs.model }}
+          INPUT_YEAR_MIN: ${{ inputs.year_min }}
+          INPUT_YEAR_MAX: ${{ inputs.year_max }}
+          INPUT_KM_MAX:   ${{ inputs.km_max }}
+          INPUT_JPY_MAX:  ${{ inputs.jpy_max }}
+          INPUT_NOTE:     ${{ inputs.note }}
