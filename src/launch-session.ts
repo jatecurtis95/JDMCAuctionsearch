@@ -144,36 +144,37 @@ async function sendKickoff(
     "content-type": "application/json",
   };
 
-  const candidates = [
-    {
-      type: "user_message",
-      message: { role: "user", content: [{ type: "text", text }] },
-    },
-    {
-      type: "user_message",
-      message: { role: "user", content: text },
-    },
-    { type: "user_message", text },
-    { type: "message", role: "user", content: text },
+  const messagesUrl = `https://api.anthropic.com/v1/sessions/${sessionId}/messages`;
+
+  const probes: { url: string; body: object }[] = [
+    { url: messagesUrl, body: { role: "user", content: text } },
+    { url: messagesUrl, body: { role: "user", content: [{ type: "text", text }] } },
+    { url: messagesUrl, body: { type: "user_message", input: text } },
+    { url, body: { type: "user_message", input: text } },
+    { url, body: { type: "user_message", body: text } },
+    { url, body: { type: "user_message", value: text } },
+    { url, body: { input: { role: "user", content: text } } },
   ];
 
   let lastErr = "";
-  for (const body of candidates) {
-    const res = await fetch(url, {
+  for (const p of probes) {
+    const res = await fetch(p.url, {
       method: "POST",
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(p.body),
     });
     if (res.ok) {
       console.log(
-        `Kickoff accepted with shape keys: ${Object.keys(body).join(",")}`,
+        `Kickoff accepted, url=${p.url}, body keys=${Object.keys(p.body).join(",")}`,
       );
       return;
     }
     lastErr = `HTTP ${res.status}: ${await res.text()}`;
-    console.log(`Kickoff shape ${JSON.stringify(Object.keys(body))} rejected: ${lastErr}`);
+    console.log(
+      `Kickoff probe rejected (url=${p.url.endsWith("/messages") ? "messages" : "events"}, body keys=${Object.keys(p.body).join(",")}): ${lastErr}`,
+    );
   }
-  throw new Error(`All kickoff shapes failed. Last: ${lastErr}`);
+  throw new Error(`All kickoff probes failed. Last: ${lastErr}`);
 }
 
 // ---- Main -------------------------------------------------------------------
