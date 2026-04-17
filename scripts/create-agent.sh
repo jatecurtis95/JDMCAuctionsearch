@@ -35,6 +35,14 @@ if [[ ! -f "$SYSTEM_PROMPT_FILE" ]]; then
   exit 1
 fi
 
+# Note: the brief section 6 shows a tools array of
+#   [{type:"bash"},{type:"file"},{type:"web_search"}]
+# but the real managed-agents-2026-04-01 API rejects that shape with
+#   tools[0].type: "bash" is not a valid value; expected one of
+#   agent_toolset_20260401, custom, mcp_toolset
+# The equivalent working shape is the Anthropic-hosted agent_toolset
+# (which bundles bash, file, web_search, and friends) plus one
+# mcp_toolset entry per declared mcp_server, referenced by name.
 BODY=$(jq -n \
   --rawfile sys "$SYSTEM_PROMPT_FILE" \
   '{
@@ -42,14 +50,15 @@ BODY=$(jq -n \
     model: "claude-sonnet-4-6",
     system: $sys,
     tools: [
-      { type: "bash" },
-      { type: "file" },
-      { type: "web_search" }
+      { type: "agent_toolset_20260401" },
+      { type: "mcp_toolset", mcp_server_name: "supabase" },
+      { type: "mcp_toolset", mcp_server_name: "notion"   },
+      { type: "mcp_toolset", mcp_server_name: "m365"     }
     ],
     mcp_servers: [
-      { type: "url", url: "https://mcp.supabase.com/mcp",           name: "supabase" },
-      { type: "url", url: "https://mcp.notion.com/mcp",             name: "notion"   },
-      { type: "url", url: "https://microsoft365.mcp.claude.com/mcp", name: "m365"    }
+      { type: "url", url: "https://mcp.supabase.com/mcp",            name: "supabase" },
+      { type: "url", url: "https://mcp.notion.com/mcp",              name: "notion"   },
+      { type: "url", url: "https://microsoft365.mcp.claude.com/mcp", name: "m365"     }
     ]
   }')
 

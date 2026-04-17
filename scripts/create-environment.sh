@@ -29,6 +29,13 @@ set -euo pipefail
 command -v curl >/dev/null 2>&1 || { echo "ERROR: curl is required" >&2; exit 1; }
 command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq is required"   >&2; exit 1; }
 
+# Note: the brief section 8 shows packages keyed by language
+#   {"python": [...], "node": [...]}
+# but the real managed-agents-2026-04-01 API keys by package manager
+# with an explicit "type":"packages" discriminator:
+#   {"type":"packages","pip":[...],"npm":[...],"apt":[...],"cargo":[...],
+#    "gem":[...],"go":[...]}
+# Only pip and npm are populated here, the others are implicit empty.
 RESPONSE=$(curl -sS --fail-with-body \
   https://api.anthropic.com/v1/environments \
   -H "x-api-key: $ANTHROPIC_API_KEY" \
@@ -42,8 +49,9 @@ RESPONSE=$(curl -sS --fail-with-body \
     "type": "cloud",
     "networking": { "type": "unrestricted" },
     "packages": {
-      "python": ["httpx", "beautifulsoup4", "lxml", "pypdf", "pillow"],
-      "node": []
+      "type": "packages",
+      "pip": ["httpx", "beautifulsoup4", "lxml", "pypdf", "pillow"],
+      "npm": []
     }
   }
 }
