@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JDMC Auction Scout Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .kpi { transition: transform 0.15s ease; }
+  .kpi:hover { transform: translateY(-2px); }
+  .score-badge { display: inline-flex; min-width: 2.5rem; justify-content: center; font-weight: 700; }
+  .score-high { background: #dcfce7; color: #166534; }
+  .score-mid { background: #fef9c3; color: #854d0e; }
+  .score-low { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<div class="max-w-7xl mx-auto p-6 space-y-8">
+
+  <header class="flex items-center justify-between">
+    <div>
+      <h1 class="text-3xl font-bold text-slate-900">JDMC Auction Scout</h1>
+      <p class="text-slate-500 text-sm" id="subtitle">loading...</p>
+    </div>
+    <button id="refresh" class="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-medium hover:bg-slate-700">
+      Refresh
+    </button>
+  </header>
+
+  <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
+    <div class="kpi bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+      <div class="text-xs uppercase tracking-wide text-slate-500">Hits today (AWST)</div>
+      <div class="text-3xl font-bold mt-1" id="kpi-hits-today">,</div>
+    </div>
+    <div class="kpi bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+      <div class="text-xs uppercase tracking-wide text-slate-500">Runs today</div>
+      <div class="text-3xl font-bold mt-1" id="kpi-runs-today">,</div>
+    </div>
+    <div class="kpi bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+      <div class="text-xs uppercase tracking-wide text-slate-500">Top score today</div>
+      <div class="text-3xl font-bold mt-1" id="kpi-top-today">,</div>
+    </div>
+    <div class="kpi bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+      <div class="text-xs uppercase tracking-wide text-slate-500">High-score hits (all time)</div>
+      <div class="text-3xl font-bold mt-1" id="kpi-high-total">,</div>
+    </div>
+    <div class="kpi bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+      <div class="text-xs uppercase tracking-wide text-slate-500">Hits total</div>
+      <div class="text-3xl font-bold mt-1" id="kpi-hits-total">,</div>
+    </div>
+  </section>
+
+  <section class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold">Latest hits</h2>
+      <span class="text-xs text-slate-400" id="latest-count"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
+          <tr>
+            <th class="py-2 pr-4">Photo</th>
+            <th class="py-2 pr-4">Vehicle</th>
+            <th class="py-2 pr-4">Source</th>
+            <th class="py-2 pr-4">Grade</th>
+            <th class="py-2 pr-4">km</th>
+            <th class="py-2 pr-4">Landed AUD</th>
+            <th class="py-2 pr-4">Margin %</th>
+            <th class="py-2 pr-4">Score</th>
+            <th class="py-2 pr-4">Status</th>
+            <th class="py-2 pr-4">Notion</th>
+            <th class="py-2 pr-4">Fetched</th>
+          </tr>
+        </thead>
+        <tbody id="latest-body" class="divide-y divide-slate-100">
+          <tr><td colspan="11" class="py-6 text-center text-slate-400">loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+      <h2 class="text-xl font-semibold mb-4">Score distribution (last 7 days)</h2>
+      <canvas id="chart-scores" height="180"></canvas>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+      <h2 class="text-xl font-semibold mb-4">Runs trend (last 14 days)</h2>
+      <canvas id="chart-runs" height="180"></canvas>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+      <h2 class="text-xl font-semibold mb-4">Hard pass reasons (last 30 days)</h2>
+      <div id="hard-pass-body" class="space-y-2 text-sm text-slate-700">
+        <div class="text-slate-400">loading...</div>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+      <h2 class="text-xl font-semibold mb-4">Warning frequency (last 30 days)</h2>
+      <div id="warnings-body" class="space-y-2 text-sm text-slate-700">
+        <div class="text-slate-400">loading...</div>
+      </div>
+    </div>
+
+  </section>
+
+  <footer class="text-xs text-slate-400 pt-6 border-t border-slate-200">
+    Data pulled directly from Supabase REST with the public anon key.
+    Repo: <a class="underline" href="https://github.com/jatecurtis95/JDMCAuctionsearch">jatecurtis95/JDMCAuctionsearch</a>.
+    Notion DB: <a class="underline" href="https://www.notion.so/f08e1ac7f17944079e1f8b3c232f10d1">Auction Scout</a>.
+  </footer>
+
+</div>
+
+<script>
+// ----------------------------------------------------------------------------
+// Config. The anon key is safe to embed, it only grants what Supabase RLS
+// and GRANTs allow on the public schema. Rotate via the Supabase dashboard
+// if ever compromised.
+// ----------------------------------------------------------------------------
+const SUPABASE_URL = "https://rrvuxgajwaxadwwolgox.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJydnV4Z2Fqd2F4YWR3d29sZ294Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NzE5OTQsImV4cCI6MjA5MDQ0Nzk5NH0.g2-LoPNuj2Oe24SWdj_NwJ6ra6lqEkakso1BAsZBYGg";
+
+async function sbGet(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      "apikey": SUPABASE_ANON,
+      "Authorization": `Bearer ${SUPABASE_ANON}`,
+      "Accept": "application/json",
+    },
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Supabase ${path} failed: ${res.status} ${t}`);
+  }
+  return res.json();
+}
+
+// AWST (UTC+8, no DST) day boundary, expressed as an ISO UTC instant we can
+// pass to PostgREST. "Today AWST" = from 16:00 UTC previous day, 24h wide.
+function awstTodayStartUTC() {
+  const now = new Date();
+  const awstMs = now.getTime() + 8 * 3600 * 1000;
+  const awstMidnightUTC = Math.floor(awstMs / 86400000) * 86400000 - 8 * 3600 * 1000;
+  return new Date(awstMidnightUTC).toISOString();
+}
+
+function scoreClass(s) {
+  if (s >= 75) return "score-badge score-high";
+  if (s >= 50) return "score-badge score-mid";
+  return "score-badge score-low";
+}
+
+function fmtNum(n, digits = 0) {
+  if (n === null || n === undefined) return "";
+  return Number(n).toLocaleString(undefined, { maximumFractionDigits: digits });
+}
+
+function fmtAUD(n) { if (n === null || n === undefined) return ""; return "$" + fmtNum(n); }
+
+function fmtPct(n) { if (n === null || n === undefined) return ""; return fmtNum(n, 1) + "%"; }
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString("en-AU", { timeZone: "Australia/Perth", dateStyle: "short", timeStyle: "short" });
+}
+
+async function loadKpis() {
+  const dayStart = awstTodayStartUTC();
+
+  // Hits today, runs today, top today, hits total, high-score total
+  const [hitsToday, runsToday, topToday, hitsTotal, highTotal] = await Promise.all([
+    sbGet(`auction_hits?select=id&fetched_at=gte.${dayStart}`),
+    sbGet(`agent_runs?select=id&started_at=gte.${dayStart}`),
+    sbGet(`auction_hits?select=score&fetched_at=gte.${dayStart}&order=score.desc&limit=1`),
+    sbGet(`auction_hits?select=id&limit=10000`),
+    sbGet(`auction_hits?select=id&score=gte.75&limit=10000`),
+  ]);
+
+  document.getElementById("kpi-hits-today").textContent = hitsToday.length;
+  document.getElementById("kpi-runs-today").textContent = runsToday.length;
+  document.getElementById("kpi-top-today").textContent  = topToday[0]?.score ?? ",";
+  document.getElementById("kpi-hits-total").textContent = hitsTotal.length;
+  document.getElementById("kpi-high-total").textContent = highTotal.length;
+}
+
+async function loadLatestHits() {
+  const rows = await sbGet("auction_hits?select=id,fetched_at,source,source_listing_id,year,make,model,grade,mileage_km,auction_grade,landed_cost_aud,est_margin_pct,score,status,cover_photo_url,notion_page_id&order=fetched_at.desc&limit=10");
+  const body = document.getElementById("latest-body");
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="11" class="py-6 text-center text-slate-400">no hits yet</td></tr>';
+  } else {
+    body.innerHTML = rows.map(r => `
+      <tr class="hover:bg-slate-50">
+        <td class="py-2 pr-4">${r.cover_photo_url ? `<img src="${r.cover_photo_url}" class="w-20 h-14 object-cover rounded" loading="lazy">` : ""}</td>
+        <td class="py-2 pr-4 font-medium">${[r.year, r.make, r.model, r.grade].filter(Boolean).join(" ")}</td>
+        <td class="py-2 pr-4 text-slate-500">${r.source ?? ""}</td>
+        <td class="py-2 pr-4">${r.auction_grade ?? ""}</td>
+        <td class="py-2 pr-4 text-right">${fmtNum(r.mileage_km)}</td>
+        <td class="py-2 pr-4 text-right">${fmtAUD(r.landed_cost_aud)}</td>
+        <td class="py-2 pr-4 text-right">${fmtPct(r.est_margin_pct)}</td>
+        <td class="py-2 pr-4"><span class="${scoreClass(r.score)} rounded px-2 py-0.5 text-xs">${r.score}</span></td>
+        <td class="py-2 pr-4"><span class="text-xs px-2 py-0.5 rounded bg-slate-100">${r.status}</span></td>
+        <td class="py-2 pr-4">${r.notion_page_id ? `<a class="text-blue-600 hover:underline" href="https://www.notion.so/${r.notion_page_id.replace(/-/g, '')}" target="_blank" rel="noopener">open</a>` : ""}</td>
+        <td class="py-2 pr-4 text-slate-500 text-xs">${fmtDate(r.fetched_at)}</td>
+      </tr>
+    `).join("");
+  }
+  document.getElementById("latest-count").textContent = `${rows.length} rows`;
+}
+
+let scoreChart = null;
+async function loadScoreDistribution() {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+  const rows = await sbGet(`auction_hits?select=score&fetched_at=gte.${sevenDaysAgo}`);
+  const buckets = Array.from({ length: 11 }, () => 0);
+  for (const r of rows) {
+    const b = Math.min(10, Math.floor((r.score ?? 0) / 10));
+    buckets[b]++;
+  }
+  const labels = Array.from({ length: 11 }, (_, i) => i === 10 ? "100" : `${i * 10}-${i * 10 + 9}`);
+  if (scoreChart) scoreChart.destroy();
+  scoreChart = new Chart(document.getElementById("chart-scores"), {
+    type: "bar",
+    data: { labels, datasets: [{ label: "Hits", data: buckets, backgroundColor: buckets.map((_, i) => i >= 8 ? "#16a34a" : i >= 5 ? "#ca8a04" : "#94a3b8") }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+}
+
+let runsChart = null;
+async function loadRunsTrend() {
+  const fourteenAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+  const rows = await sbGet(`agent_runs?select=started_at,listings_scanned,hits_written,high_score_hits&started_at=gte.${fourteenAgo}&order=started_at.asc`);
+  const byDay = new Map();
+  for (const r of rows) {
+    const d = r.started_at.slice(0, 10);
+    const agg = byDay.get(d) ?? { scanned: 0, hits: 0, high: 0 };
+    agg.scanned += r.listings_scanned ?? 0;
+    agg.hits += r.hits_written ?? 0;
+    agg.high += r.high_score_hits ?? 0;
+    byDay.set(d, agg);
+  }
+  const labels = [...byDay.keys()];
+  if (runsChart) runsChart.destroy();
+  runsChart = new Chart(document.getElementById("chart-runs"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "Scanned", data: labels.map(l => byDay.get(l).scanned), borderColor: "#94a3b8", tension: 0.3 },
+        { label: "Hits written", data: labels.map(l => byDay.get(l).hits), borderColor: "#0ea5e9", tension: 0.3 },
+        { label: "High score", data: labels.map(l => byDay.get(l).high), borderColor: "#16a34a", tension: 0.3 },
+      ],
+    },
+    options: { responsive: true, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+  });
+}
+
+async function loadHardPassAndWarnings() {
+  const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+  const rows = await sbGet(`agent_runs?select=hard_pass_reasons,warnings&started_at=gte.${thirtyAgo}`);
+
+  const hardPass = new Map();
+  const warnings = new Map();
+  for (const r of rows) {
+    if (r.hard_pass_reasons && typeof r.hard_pass_reasons === "object") {
+      for (const [reason, count] of Object.entries(r.hard_pass_reasons)) {
+        hardPass.set(reason, (hardPass.get(reason) ?? 0) + (Number(count) || 0));
+      }
+    }
+    if (Array.isArray(r.warnings)) {
+      for (const w of r.warnings) warnings.set(w, (warnings.get(w) ?? 0) + 1);
+    }
+  }
+
+  const sortedHard = [...hardPass.entries()].sort((a, b) => b[1] - a[1]);
+  const maxHard = sortedHard[0]?.[1] || 1;
+  document.getElementById("hard-pass-body").innerHTML = sortedHard.length === 0
+    ? '<div class="text-slate-400">no data yet</div>'
+    : sortedHard.map(([reason, count]) => `
+        <div class="flex items-center gap-3">
+          <div class="w-48 truncate text-slate-700">${reason}</div>
+          <div class="flex-1 bg-slate-100 rounded overflow-hidden">
+            <div class="h-4 bg-slate-700" style="width:${(count / maxHard * 100).toFixed(1)}%"></div>
+          </div>
+          <div class="w-16 text-right font-mono text-sm">${count}</div>
+        </div>`).join("");
+
+  const sortedWarn = [...warnings.entries()].sort((a, b) => b[1] - a[1]);
+  const maxWarn = sortedWarn[0]?.[1] || 1;
+  document.getElementById("warnings-body").innerHTML = sortedWarn.length === 0
+    ? '<div class="text-slate-400">no data yet</div>'
+    : sortedWarn.map(([w, count]) => `
+        <div class="flex items-center gap-3">
+          <div class="w-48 truncate text-slate-700 font-mono text-xs">${w}</div>
+          <div class="flex-1 bg-slate-100 rounded overflow-hidden">
+            <div class="h-4 bg-amber-500" style="width:${(count / maxWarn * 100).toFixed(1)}%"></div>
+          </div>
+          <div class="w-12 text-right font-mono text-sm">${count}</div>
+        </div>`).join("");
+}
+
+async function refreshAll() {
+  document.getElementById("subtitle").textContent = "loading...";
+  try {
+    await Promise.all([
+      loadKpis(),
+      loadLatestHits(),
+      loadScoreDistribution(),
+      loadRunsTrend(),
+      loadHardPassAndWarnings(),
+    ]);
+    document.getElementById("subtitle").textContent =
+      `last refreshed ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Perth" })} AWST`;
+  } catch (err) {
+    console.error(err);
+    document.getElementById("subtitle").textContent = `error: ${err.message}`;
+  }
+}
+
+document.getElementById("refresh").addEventListener("click", refreshAll);
+refreshAll();
+// Auto refresh every 60 seconds, useful while watching a run land
+setInterval(refreshAll, 60000);
+</script>
+
+</body>
+</html>
