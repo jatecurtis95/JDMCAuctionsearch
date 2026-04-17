@@ -104,7 +104,6 @@ async function createSession(
     agent: string;
     environment_id: string;
     title: string;
-    mcp_servers: McpServer[];
   },
 ): Promise<ManagedAgentSession> {
   const res = await fetch("https://api.anthropic.com/v1/sessions", {
@@ -191,37 +190,19 @@ async function main(): Promise<void> {
   );
   console.log(`Graph bearer minted, length ${graphBearer.length}.`);
 
-  const mcpServers: McpServer[] = [
-    {
-      type: "url",
-      url: "https://mcp.supabase.com/mcp",
-      name: "supabase",
-      authorization_token: SUPABASE_PAT,
-    },
-    {
-      type: "url",
-      url: "https://mcp.notion.com/mcp",
-      name: "notion",
-      authorization_token: NOTION_INTEGRATION_SECRET,
-    },
-    {
-      type: "url",
-      url: "https://microsoft365.mcp.claude.com/mcp",
-      name: "m365",
-      authorization_token: graphBearer,
-    },
-  ];
-
-  console.log("Creating session with inline mcp_servers...");
+  console.log("Creating session...");
   const now = new Date().toISOString();
   const session = await createSession(ANTHROPIC_API_KEY, {
     agent: AGENT_ID,
     environment_id: ENV_ID,
     title: `auction-scout ${now}`,
-    mcp_servers: mcpServers,
   });
   console.log(`Session created: ${session.id}`);
 
+  // Tokens are passed in the kickoff so the agent can call Supabase REST,
+  // Notion REST, and Microsoft Graph directly via bash + curl. The hosted
+  // MCP servers declared on the agent are unauthenticated for now and
+  // will be migrated to vault-based credentials in a follow-up PR.
   await sendKickoff(ANTHROPIC_API_KEY, session.id,
     `Run the auction scout now.
 
@@ -232,18 +213,31 @@ High-score alert threshold: 75.
 Always send a summary email, even if zero high-score hits (report "no hits today" with total listings scanned).
 
 Targets:
-- Supabase project id: ${SUPABASE_PROJECT_ID}
-  tables: auction_hits, auction_photos
-  storage buckets: auction-photos, auction-sheets
+- Supabase project ref: ${SUPABASE_PROJECT_ID}
+  REST base: https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1
+  Storage base: https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1
+  Tables: auction_hits, auction_photos
+  Buckets: auction-photos, auction-sheets
 - Notion database id: ${NOTION_DATABASE_ID}
   database name: "Auction Scout"
+  REST base: https://api.notion.com/v1
+  Notion-Version header required: 2022-06-28
 - Email from mailbox: ${ALERT_FROM_MAILBOX}
   Email to: ${ALERT_EMAIL}
+  Graph base: https://graph.microsoft.com/v1.0
 
-MCP authorization:
-- supabase, notion, m365 MCP servers are authorized on this session via
-  authorization_token on each mcp_server entry. You do not need to pass
-  tokens yourself, the MCP layer handles it.
+Credentials for this run (use via curl with bash tool):
+- SUPABASE_TOKEN: ${SUPABASE_PAT}
+  header: Authorization: Bearer <token>, plus apikey: <token>
+- NOTION_TOKEN: ${NOTION_INTEGRATION_SECRET}
+  header: Authorization: Bearer <token>
+- GRAPH_BEARER (1 hour validity): ${graphBearer}
+  header: Authorization: Bearer <token>
+
+The hosted MCP servers (supabase, notion, m365) are declared on the
+agent but are not yet authenticated, do not call them. Use the bash
+tool with curl + jq for all external calls. A later PR will migrate
+these to Anthropic vaults so the MCP tools become usable.
 
 Follow your system prompt. Emit session.status_idle when done.`);
 
