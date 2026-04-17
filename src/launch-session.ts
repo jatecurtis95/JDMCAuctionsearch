@@ -167,6 +167,145 @@ async function sendKickoff(
   }
 }
 
+// ---- Notion watchlist fetch -------------------------------------------------
+// Pulls Active rows from the "Client Watchlist" Notion database and shapes
+// them into a simple array the agent can match against. Source of truth is
+// Notion (easy for Jate to edit on phone), agent reads at runtime, no
+// intermediate Supabase sync needed.
+
+interface WatchlistEntry {
+  notion_page_id: string;
+  title: string;
+  client: string | null;
+  make: string | null;
+  model: string | null;
+  chassis_code: string | null;
+  year_min: number | null;
+  year_max: number | null;
+  km_max: number | null;
+  jpy_max: number | null;
+  landed_aud_max: number | null;
+  grade_min: string | null;
+  transmission: string | null;
+  colour_pref: string | null;
+  priority_boost: number;
+  notes: string | null;
+}
+
+function rt(prop: unknown): string | null {
+  const arr = (prop as { rich_text?: Array<{ plain_text?: string }> } | undefined)?.rich_text;
+  if (!arr || arr.length === 0) return null;
+  const joined = arr.map((x) => x.plain_text ?? "").join("").trim();
+  return joined || null;
+}
+function title(prop: unknown): string {
+  const arr = (prop as { title?: Array<{ plain_text?: string }> } | undefined)?.title;
+  return (arr ?? []).map((x) => x.plain_text ?? "").join("").trim();
+}
+function num(prop: unknown): number | null {
+  const v = (prop as { number?: number | null } | undefined)?.number;
+  return v ?? null;
+}
+function sel(prop: unknown): string | null {
+  const v = (prop as { select?: { name?: string } | null } | undefined)?.select;
+  return v?.name ?? null;
+}
+
+async function fetchWatchlist(
+  notionToken: string,
+  watchlistDataSourceId: string,
+): Promise<WatchlistEntry[]> {
+  const url = `https://api.notion.com/v1/data_sources/${watchlistDataSourceId}/query`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${notionToken}`,
+      "Notion-Version": "2022-06-28",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      filter: { property: "Status", select: { equals: "Active" } },
+      page_size: 100,
+    }),
+  });
+  if (!res.ok) {
+    // Non-fatal, agent still runs without watchlist
+    console.warn(
+      `Watchlist fetch failed: HTTP ${res.status}: ${await res.text()}. Continuing without watchlist.`,
+    );
+    return [];
+  }
+  const body = (await res.json()) as { results?: Array<{ id: string; properties: Record<string, unknown> }> };
+  return (body.results ?? []).map((page) => {
+    const p = page.properties;
+    return {
+      notion_page_id:  page.id,
+      title:           title(p["Title"]),
+      client:          rt(p["Client"]),
+      make:            sel(p["Make"]),
+      model:           rt(p["Model"]),
+      chassis_code:    rt(p["Chassis Code"]),
+      year_min:        num(p["Year Min"]),
+      year_max:        num(p["Year Max"]),
+      km_max:          num(p["Km Max"]),
+      jpy_max:         num(p["JPY Max"]),
+      landed_aud_max:  num(p["Landed AUD Max"]),
+      grade_min:       rt(p["Grade Min"]),
+      transmission:    sel(p["Transmission"]),
+      colour_pref:     rt(p["Colour Pref"]),
+      priority_boost:  num(p["Priority Boost"]) ?? 25,
+      notes:           rt(p["Notes"]),
+    };
+  });
+}
+
+// ---- Ad-hoc search inputs from workflow_dispatch ----------------------------
+// workflow_dispatch can pass inputs as env vars (INPUT_*). When any are set,
+// we switch the agent into "targeted" mode on top of (not instead of) the
+// daily scan.
+
+interface AdhocQuery {
+  make?: string;
+  model?: string;
+  year_min?: number;
+  year_max?: number;
+  km_max?: number;
+  jpy_max?: number;
+  note?: string;
+}
+
+function readAdhocQuery(): AdhocQuery | null {
+  const q: AdhocQuery = {};
+  const s = (k: string) => {
+    const v = process.env[k]?.trim();
+    return v && v.length > 0 ? v : undefined;
+  };
+  const n = (k: string) => {
+    const v = s(k);
+    if (!v) return undefined;
+    const num = Number(v);
+    return Number.isFinite(num) ? num : undefined;
+  };
+  const make     = s("INPUT_MAKE");
+  const model    = s("INPUT_MODEL");
+  const year_min = n("INPUT_YEAR_MIN");
+  const year_max = n("INPUT_YEAR_MAX");
+  const km_max   = n("INPUT_KM_MAX");
+  const jpy_max  = n("INPUT_JPY_MAX");
+  const note     = s("INPUT_NOTE");
+  if (!make && !model && !year_min && !year_max && !km_max && !jpy_max && !note) {
+    return null;
+  }
+  if (make)     q.make = make;
+  if (model)    q.model = model;
+  if (year_min) q.year_min = year_min;
+  if (year_max) q.year_max = year_max;
+  if (km_max)   q.km_max = km_max;
+  if (jpy_max)  q.jpy_max = jpy_max;
+  if (note)     q.note = note;
+  return q;
+}
+
 // ---- Main -------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -188,12 +327,30 @@ async function main(): Promise<void> {
   // they can change without touching the agent definition.
   const NOTION_DATABASE_ID   = process.env.NOTION_DATABASE_ID
     ?? "f08e1ac7-f179-4407-9e1f-8b3c232f10d1";
+  const NOTION_AUCTION_SCOUT_DS_ID = process.env.NOTION_AUCTION_SCOUT_DS_ID
+    ?? "969496d0-4c6d-4b60-96a9-cabfbd83a22a";
+  const NOTION_WATCHLIST_DS_ID = process.env.NOTION_WATCHLIST_DS_ID
+    ?? "ae89c441-913a-4c13-b6d0-df225c883697";
   const SUPABASE_PROJECT_ID  = process.env.SUPABASE_PROJECT_ID
     ?? "rrvuxgajwaxadwwolgox";
   const ALERT_EMAIL          = process.env.ALERT_EMAIL
     ?? "jate@jdmconnect.com.au";
   const ALERT_FROM_MAILBOX   = process.env.ALERT_FROM_MAILBOX
     ?? "imports@jdmconnect.com.au";
+
+  console.log("Fetching active client watchlist from Notion...");
+  const watchlist = await fetchWatchlist(
+    NOTION_INTEGRATION_SECRET,
+    NOTION_WATCHLIST_DS_ID,
+  );
+  console.log(`Watchlist rows fetched: ${watchlist.length}`);
+
+  const adhoc = readAdhocQuery();
+  if (adhoc) {
+    console.log(`Ad-hoc query: ${JSON.stringify(adhoc)}`);
+  } else {
+    console.log("No ad-hoc query, standard daily scan.");
+  }
 
   console.log("Minting Microsoft Graph bearer...");
   const graphBearer = await mintGraphBearer(
@@ -225,6 +382,44 @@ async function main(): Promise<void> {
 - Max listings to process this run: 1500 (raised from previous 300, USS publishes thousands daily)
 - High-score alert threshold: 75
 - Always send a summary email, even if zero high-score hits ("no hits today" with total listings scanned)
+
+## Mode: ${adhoc ? "TARGETED SEARCH + daily scan" : "Daily scan"}
+${adhoc ? `
+### Targeted query (from workflow_dispatch inputs)
+The user dispatched this run manually with the following filters. Prioritize listings that match these and feature them at the top of the email. Still run the normal daily scan and scoring for everything else, but flag anything matching the targeted query even if score < 75, with "Targeted match" in the email line item.
+\`\`\`json
+${JSON.stringify(adhoc, null, 2)}
+\`\`\`
+` : ""}
+
+## Client Watchlist (standing orders from JDMC clients)
+${watchlist.length === 0 ? "No active watchlist rows. Standard scoring only." : `There are ${watchlist.length} active watchlist rows. For every listing that survives the hard pass filter, check it against each watchlist row. A listing "matches" a watchlist row when all of these agree (null fields on the watchlist mean "any"):
+
+- Make matches (case-insensitive, or watchlist.make = "Any")
+- Model substring match (case-insensitive, watchlist.model is in listing.model)
+- Chassis code starts with watchlist.chassis_code (if set)
+- Year is within [year_min, year_max] (if set)
+- Mileage km <= km_max (if set)
+- JPY expected bid <= jpy_max (if set)
+- Landed cost AUD <= landed_aud_max (if set)
+- Grade >= grade_min (if set, numeric compare after stripping non-digits)
+- Transmission matches (if set, watchlist.transmission = "Any" means any)
+
+When matched:
+- Add watchlist.priority_boost to the score (do this IN ADDITION to the normal rubric, cap at 100).
+- Set auction_hits.matched_watchlist_client = watchlist.client (or watchlist.title if client is blank).
+- Set auction_hits.matched_watchlist_id = watchlist.notion_page_id.
+- Set auction_hits.watchlist_boost = watchlist.priority_boost.
+- In Notion, set "Watchlist Match" to "\${client} (\${title})" and "Watchlist Boost" to the boost number.
+- In the email, matched hits go at the TOP regardless of score, under a header "Watchlist matches" listing client name and boost.
+
+If multiple watchlist rows match the same listing, pick the one with the highest priority_boost and note the tie in reasoning.
+
+Active watchlist rows as JSON:
+\`\`\`json
+${JSON.stringify(watchlist, null, 2)}
+\`\`\`
+`}
 
 ## Behavior overrides for this run (these take precedence over the system prompt)
 
