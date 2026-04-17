@@ -52,7 +52,19 @@ jobs:
       - name: launch agent session
         run: npx tsx src/launch-session.ts
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          JDMC_AGENT_ID:     ${{ secrets.JDMC_AGENT_ID }}
-          JDMC_ENV_ID:       ${{ secrets.JDMC_ENV_ID }}
-          AUCTION_SOURCE:    USS
+          # Anthropic plumbing
+          ANTHROPIC_API_KEY:         ${{ secrets.ANTHROPIC_API_KEY }}
+          JDMC_AGENT_ID:             ${{ secrets.JDMC_AGENT_ID }}
+          JDMC_ENV_ID:               ${{ secrets.JDMC_ENV_ID }}
+          AUCTION_SOURCE:            USS
+          # MCP authorization tokens
+          SUPABASE_PAT:              ${{ secrets.SUPABASE_PAT }}
+          NOTION_INTEGRATION_SECRET: ${{ secrets.NOTION_INTEGRATION_SECRET }}
+          M365_TENANT_ID:            ${{ secrets.M365_TENANT_ID }}
+          M365_CLIENT_ID:            ${{ secrets.M365_CLIENT_ID }}
+          M365_CLIENT_SECRET:        ${{ secrets.M365_CLIENT_SECRET }}
+          # Dynamic targets (optional, launcher has safe defaults)
+          NOTION_DATABASE_ID:        ${{ secrets.NOTION_DATABASE_ID }}
+          SUPABASE_PROJECT_ID:       ${{ secrets.SUPABASE_PROJECT_ID }}
+          ALERT_EMAIL:               ${{ secrets.ALERT_EMAIL }}
+          ALERT_FROM_MAILBOX:        ${{ secrets.ALERT_FROM_MAILBOX }}

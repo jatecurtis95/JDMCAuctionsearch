@@ -60,14 +60,40 @@ Do not paraphrase the brief into other files. If something needs to change, chan
 
 These are intentionally not automated. The scripts that exist are one-shot helpers, they are not invoked by CI.
 
-1. Create the Supabase project (or run the migration against existing `jdm-ops-hub`).
-2. Create the Notion "Auction Scout" database with the properties listed in brief section 5.
-3. Create the M365 Graph API app registration for the `imports@jdmconnect.com.au` mailbox.
+1. Create the Supabase project (or run the migration against existing `jdm-connect`).
+2. Create the Notion "Auction Scout" database with the properties listed in brief section 5, and connect the `jdmc-auction-scout` Notion integration to it (`...` menu > Connections > Add).
+3. Create the M365 Graph API app registration for the `imports@jdmconnect.com.au` mailbox. Application permission: `Mail.Send`. Tenant admin consent required. Apply an `ApplicationAccessPolicy` scoped to `imports@` so the client secret cannot be used to send as any other mailbox.
 4. Run `./scripts/create-agent.sh` once, save the returned id as `JDMC_AGENT_ID`.
 5. Run `./scripts/create-environment.sh` once, save the returned id as `JDMC_ENV_ID`.
-6. Set the GitHub Actions secrets: `ANTHROPIC_API_KEY`, `JDMC_AGENT_ID`, `JDMC_ENV_ID`.
+6. Generate a Supabase Personal Access Token at `https://supabase.com/dashboard/account/tokens` (never expires).
+7. Generate a Notion Internal Integration Secret at `https://www.notion.so/profile/integrations`.
+8. Set all GitHub Actions secrets.
 
 Full checklist in brief section 14.
+
+## GitHub Actions secrets
+
+Required for the cron to run. All are set at `Settings > Secrets and variables > Actions`.
+
+Plumbing:
+- `ANTHROPIC_API_KEY` Anthropic Console API key.
+- `JDMC_AGENT_ID` returned by `scripts/create-agent.sh`.
+- `JDMC_ENV_ID` returned by `scripts/create-environment.sh`.
+
+MCP authorization tokens, read by `src/launch-session.ts` and stamped into the agent's `mcp_servers` list on each run:
+- `SUPABASE_PAT` Supabase Personal Access Token, starts with `sbp_`.
+- `NOTION_INTEGRATION_SECRET` Notion internal integration secret, starts with `ntn_`.
+- `M365_TENANT_ID` Directory (tenant) UUID from the Azure app registration.
+- `M365_CLIENT_ID` Application (client) UUID from the Azure app registration.
+- `M365_CLIENT_SECRET` the Value field (not the Secret ID) from Certificates & secrets. The launcher exchanges this for a fresh Graph bearer at each run.
+
+Optional (launcher has safe defaults wired to the currently-provisioned resources):
+- `NOTION_DATABASE_ID` Auction Scout database UUID (default: `f08e1ac7-f179-4407-9e1f-8b3c232f10d1`).
+- `SUPABASE_PROJECT_ID` Supabase project ref (default: `rrvuxgajwaxadwwolgox`).
+- `ALERT_EMAIL` where summary emails go (default: `jate@jdmconnect.com.au`).
+- `ALERT_FROM_MAILBOX` from address for summary emails (default: `imports@jdmconnect.com.au`).
+
+Rotation is a secret change, not an agent recreate. The launcher repatches `mcp_servers` every run.
 
 ## Local development
 
