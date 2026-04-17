@@ -217,19 +217,37 @@ async function main(): Promise<void> {
   // MCP servers declared on the agent are unauthenticated for now and
   // will be migrated to vault-based credentials in a follow-up PR.
   await sendKickoff(ANTHROPIC_API_KEY, session.id,
-    `Run the auction scout now.
+    `Run the auction scout now. Session id: ${session.id}.
 
-Source: ${AUCTION_SOURCE}
-Window: listings updated in the last 24 hours.
-Max listings to process this run: 300.
-High-score alert threshold: 75.
-Always send a summary email, even if zero high-score hits (report "no hits today" with total listings scanned).
+## Run parameters
+- Source: ${AUCTION_SOURCE} (always write this exact uppercase string into auction_hits.source and the Notion Source select)
+- Window: listings updated in the last 24 hours
+- Max listings to process this run: 1500 (raised from previous 300, USS publishes thousands daily)
+- High-score alert threshold: 75
+- Always send a summary email, even if zero high-score hits ("no hits today" with total listings scanned)
 
-Targets:
+## Behavior overrides for this run (these take precedence over the system prompt)
+
+1. DO NOT call the rover-eligibility skill. It is not available in this managed container. For SEVS / MRE eligibility, use web_search against
+   https://rover.infrastructure.gov.au and the public SEVS / MRE registers.
+   If you cannot confirm eligibility from a primary source, set sevs_eligible/mre_eligible to null (not true) and add 'sevs_unconfirmed' to warnings.
+
+2. NEVER fabricate URLs. If you did not actually upload a file to Supabase Storage, set the URL field to null. Do not invent paths in non-existent buckets like 'vehicle-images'. The only legal buckets are 'auction-photos' and 'auction-sheets'. The only legal path conventions are:
+     auction-photos: {SOURCE}/{source_listing_id}/{sequence}.jpg   (sequence is 1, 2, 3, ...)
+     auction-sheets: {SOURCE}/{source_listing_id}/sheet.jpg
+   Use the SOURCE in uppercase, matching the auction_hits.source value.
+
+3. If you do upload a real auction sheet image, also set both auction_sheet_url AND auction_sheet_image_path. If you do not upload a sheet (e.g. the listing did not expose one), leave BOTH fields null and add 'no_auction_sheet' to warnings. Never put a vehicle photo in the auction_sheet_url field.
+
+4. For unknown numeric fields, write null, not 0. jpy_start_price=0 is wrong if the listing did not expose a start price; use null instead.
+
+5. Listing id format: use just the auction-house-native id, like 'USSOsaka-6348' or 'USSNagoya-4521'. Do NOT mix prefixes like 'ASNET-6348-USSOsaka'.
+
+## Targets
 - Supabase project ref: ${SUPABASE_PROJECT_ID}
   REST base: https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1
   Storage base: https://${SUPABASE_PROJECT_ID}.supabase.co/storage/v1
-  Tables: auction_hits, auction_photos
+  Tables: auction_hits, auction_photos, agent_runs
   Buckets: auction-photos, auction-sheets
 - Notion database id: ${NOTION_DATABASE_ID}
   database name: "Auction Scout"
@@ -239,20 +257,38 @@ Targets:
   Email to: ${ALERT_EMAIL}
   Graph base: https://graph.microsoft.com/v1.0
 
-Credentials for this run (use via curl with bash tool):
+## Credentials (use via bash + curl)
 - SUPABASE_TOKEN: ${SUPABASE_PAT}
-  header: Authorization: Bearer <token>, plus apikey: <token>
+  Headers required: 'Authorization: Bearer <token>' AND 'apikey: <token>'
 - NOTION_TOKEN: ${NOTION_INTEGRATION_SECRET}
-  header: Authorization: Bearer <token>
-- GRAPH_BEARER (1 hour validity): ${graphBearer}
-  header: Authorization: Bearer <token>
+  Headers required: 'Authorization: Bearer <token>' AND 'Notion-Version: 2022-06-28'
+- GRAPH_BEARER (~1 hour validity): ${graphBearer}
+  Header required: 'Authorization: Bearer <token>'
 
-The hosted MCP servers (supabase, notion, m365) are declared on the
-agent but are not yet authenticated, do not call them. Use the bash
-tool with curl + jq for all external calls. A later PR will migrate
-these to Anthropic vaults so the MCP tools become usable.
+The hosted MCP servers (supabase, notion, m365) declared on the agent are NOT authenticated. Do not call them. Use bash + curl + jq for all external calls.
 
-Follow your system prompt. Emit session.status_idle when done.`);
+## End-of-run observability
+After the email is sent (or attempted), insert one row into agent_runs:
+  POST https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1/agent_runs
+  Body shape:
+    {
+      "session_id": "${session.id}",
+      "source": "${AUCTION_SOURCE}",
+      "started_at": "${now}",
+      "ended_at": "<current ISO timestamp>",
+      "listings_scanned": <int>,
+      "listings_eligible": <int, those that passed all hard filters>,
+      "hits_written": <int rows added to auction_hits this run>,
+      "high_score_hits": <int with score >= 75>,
+      "top_score": <int or null>,
+      "hard_pass_count": <int>,
+      "hard_pass_reasons": { "<reason>": <count>, ... },
+      "errors": [ <strings> ],
+      "warnings": [ <strings> ]
+    }
+This row is what powers the weekly trend dashboards, so be honest about counts.
+
+Follow your system prompt for everything else. Emit session.status_idle when done.`);
 
   console.log(`Launched session ${session.id}`);
 }
