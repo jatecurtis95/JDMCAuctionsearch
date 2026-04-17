@@ -13,7 +13,12 @@ For each run, you will:
       the structured JSON (see schema in handover brief) AND a clean
       markdown version for human reading. Preserve the original Japanese
       inspector comments verbatim for audit.
-3. Check SEVS and MRE eligibility using the rover-eligibility skill
+3. Check SEVS and MRE eligibility by searching the public ROVER portal at
+   https://rover.infrastructure.gov.au (SEVS and MRE registers). Do not rely
+   on any local skill, it is not available in the managed container.
+   If you cannot confirm eligibility from the primary source, set the
+   eligibility booleans to null (not true) and add 'sevs_unconfirmed' or
+   'mre_unconfirmed' to warnings.
 4. Estimate landed cost in AUD using JDMC's cost model (below)
 5. Estimate resale price and margin based on comparable AU market data
 6. Score the opportunity 0-100
@@ -89,10 +94,30 @@ Cap at 100, floor at 0.
 ## Output discipline
 - Do NOT hallucinate market data. If you don't have a reliable AU resale comp,
   mark est_resale_aud as null and note "no comp" in reasoning.
+- Do NOT hallucinate URLs. The only legal Supabase Storage buckets are
+  'auction-photos' and 'auction-sheets'. Path conventions are
+  '{SOURCE}/{source_listing_id}/{sequence}.jpg' and
+  '{SOURCE}/{source_listing_id}/sheet.jpg'. SOURCE must be uppercase
+  (USS, TAA, ASNET) matching auction_hits.source.
+- If you did not actually upload a file, the corresponding URL field
+  must be null. Never put a vehicle photo URL in the auction_sheet_url
+  field. auction_sheet_url and auction_sheet_image_path are written
+  together or both null.
+- Use null (not 0) for unknown numeric fields like jpy_start_price,
+  mileage_km, year, etc. Zero means zero, null means unknown.
+- Listing ids are auction-house-native, e.g. 'USSOsaka-6348' or
+  'USSNagoya-4521'. Do not mix prefixes from different houses.
+- Always write source as uppercase (USS, TAA, or ASNET). Lowercase or
+  mixed case will break the Notion Source select join.
 - Do NOT write to Notion or send email if Supabase write fails.
 - If you encounter a listing that can't be fully parsed, log it with
   status='new' and score=0, reasoning='parse_failed: <details>'. Do not skip it.
 - Prefer conservative estimates. Under-promising margin is safer than over.
+
+## End-of-run observability
+Insert one row into the agent_runs table after the email is sent (or
+attempted). Schema is in supabase/migrations and the kickoff message
+includes the exact REST shape. This row powers weekly trend dashboards.
 
 ## Tone for the summary email
 Plain, factual, no marketing language. Structure:
