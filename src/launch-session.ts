@@ -144,37 +144,25 @@ async function sendKickoff(
     "content-type": "application/json",
   };
 
-  const messagesUrl = `https://api.anthropic.com/v1/sessions/${sessionId}/messages`;
-
-  const probes: { url: string; body: object }[] = [
-    { url: messagesUrl, body: { role: "user", content: text } },
-    { url: messagesUrl, body: { role: "user", content: [{ type: "text", text }] } },
-    { url: messagesUrl, body: { type: "user_message", input: text } },
-    { url, body: { type: "user_message", input: text } },
-    { url, body: { type: "user_message", body: text } },
-    { url, body: { type: "user_message", value: text } },
-    { url, body: { input: { role: "user", content: text } } },
-  ];
-
-  let lastErr = "";
-  for (const p of probes) {
-    const res = await fetch(p.url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(p.body),
-    });
-    if (res.ok) {
-      console.log(
-        `Kickoff accepted, url=${p.url}, body keys=${Object.keys(p.body).join(",")}`,
-      );
-      return;
-    }
-    lastErr = `HTTP ${res.status}: ${await res.text()}`;
-    console.log(
-      `Kickoff probe rejected (url=${p.url.endsWith("/messages") ? "messages" : "events"}, body keys=${Object.keys(p.body).join(",")}): ${lastErr}`,
-    );
+  // KNOWN OPEN ISSUE: the body shape for this endpoint is not yet known.
+  // The brief said {type:"user_message", content:"..."} but the live
+  // API rejects content. Probed candidates that all failed in dispatch
+  // 4 and 5: message:{role,content[]}, message:{role,content}, text,
+  // input, body, value, role+content, input:{role,content}. Also
+  // probed /v1/sessions/:id/messages path, all 404.
+  //
+  // Next step: read @anthropic-ai/sdk source for sessions.events.create
+  // or check the OpenAPI / official reference in the Anthropic Console.
+  // Once known, replace this stub with a single fetch.
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ type: "user_message", content: text }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Kickoff event failed (shape unknown): HTTP ${res.status}: ${errText}`);
   }
-  throw new Error(`All kickoff probes failed. Last: ${lastErr}`);
 }
 
 // ---- Main -------------------------------------------------------------------
