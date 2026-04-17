@@ -144,25 +144,43 @@ async function sendKickoff(
     "content-type": "application/json",
   };
 
-  // KNOWN OPEN ISSUE: the body shape for this endpoint is not yet known.
-  // The brief said {type:"user_message", content:"..."} but the live
-  // API rejects content. Probed candidates that all failed in dispatch
-  // 4 and 5: message:{role,content[]}, message:{role,content}, text,
-  // input, body, value, role+content, input:{role,content}. Also
-  // probed /v1/sessions/:id/messages path, all 404.
-  //
-  // Next step: read @anthropic-ai/sdk source for sessions.events.create
-  // or check the OpenAPI / official reference in the Anthropic Console.
-  // Once known, replace this stub with a single fetch.
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ type: "user_message", content: text }),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Kickoff event failed (shape unknown): HTTP ${res.status}: ${errText}`);
+  // The POST body wraps the event in an events array with a dotted type.
+  // Source: https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/managed-agents-events.md
+  // The inner event shape is still not documented, so we probe a few
+  // variations inside the wrapper. First one that returns 2xx wins.
+  const innerCandidates: object[] = [
+    { type: "user.message", content: text },
+    { type: "user.message", text },
+    {
+      type: "user.message",
+      message: { role: "user", content: [{ type: "text", text }] },
+    },
+    { type: "user.message", message: { role: "user", content: text } },
+    {
+      type: "user.message",
+      content: [{ type: "text", text }],
+    },
+  ];
+
+  let lastErr = "";
+  for (const inner of innerCandidates) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ events: [inner] }),
+    });
+    if (res.ok) {
+      console.log(
+        `Kickoff accepted, inner shape keys: ${Object.keys(inner).join(",")}`,
+      );
+      return;
+    }
+    lastErr = `HTTP ${res.status}: ${await res.text()}`;
+    console.log(
+      `Kickoff inner shape ${JSON.stringify(Object.keys(inner))} rejected: ${lastErr}`,
+    );
   }
+  throw new Error(`All kickoff shapes failed. Last: ${lastErr}`);
 }
 
 // ---- Main -------------------------------------------------------------------
