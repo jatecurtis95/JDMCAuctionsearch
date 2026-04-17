@@ -130,28 +130,50 @@ async function createSession(
 async function sendKickoff(
   apiKey: string,
   sessionId: string,
-  content: string,
+  text: string,
 ): Promise<void> {
-  const res = await fetch(
-    `https://api.anthropic.com/v1/sessions/${sessionId}/events`,
-    {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "managed-agents-2026-04-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ type: "user_message", content }),
-    },
-  );
+  // The brief's {type:"user_message", content:"..."} shape is rejected
+  // with "content: Extra inputs are not permitted". The managed-agents
+  // events endpoint follows the Messages API shape: a message object
+  // with role + content blocks.
+  const url = `https://api.anthropic.com/v1/sessions/${sessionId}/events`;
+  const headers = {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "managed-agents-2026-04-01",
+    "content-type": "application/json",
+  };
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(
-      `Kickoff event failed: HTTP ${res.status}: ${errText}`,
-    );
+  const candidates = [
+    {
+      type: "user_message",
+      message: { role: "user", content: [{ type: "text", text }] },
+    },
+    {
+      type: "user_message",
+      message: { role: "user", content: text },
+    },
+    { type: "user_message", text },
+    { type: "message", role: "user", content: text },
+  ];
+
+  let lastErr = "";
+  for (const body of candidates) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      console.log(
+        `Kickoff accepted with shape keys: ${Object.keys(body).join(",")}`,
+      );
+      return;
+    }
+    lastErr = `HTTP ${res.status}: ${await res.text()}`;
+    console.log(`Kickoff shape ${JSON.stringify(Object.keys(body))} rejected: ${lastErr}`);
   }
+  throw new Error(`All kickoff shapes failed. Last: ${lastErr}`);
 }
 
 // ---- Main -------------------------------------------------------------------
