@@ -1,0 +1,45 @@
+# ============================================================================
+# .github/workflows/refresh-rover-eligibility.yml
+# ----------------------------------------------------------------------------
+# Daily mirror of jatecurtis95/rover-eligibility into the rover_eligibility
+# Supabase table. Runs at 23:30 UTC (07:30 AWST), 90 minutes before the main
+# auction-scout cron at 01:00 UTC, so the scout always reads fresh data.
+# ============================================================================
+name: refresh-rover-eligibility
+
+"on":
+  schedule:
+    # 23:30 UTC = 07:30 AWST, 90 min before the main auction-scout cron
+    - cron: "30 23 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh-rover-eligibility
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: refresh rover eligibility mirror
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: install deps
+        run: npm ci
+
+      - name: refresh
+        run: npx tsx scripts/refresh-rover-eligibility.ts
+        env:
+          SUPABASE_PAT:         ${{ secrets.SUPABASE_PAT }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
