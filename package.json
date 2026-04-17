@@ -1,0 +1,22 @@
+{
+  "name": "jdmc-auction-scout",
+  "version": "0.1.0",
+  "description": "Daily session launcher for the JDM Connect auction monitoring Managed Agent. See JDMC_Auction_Agent_Handover_Brief.md.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "launch": "tsx src/launch-session.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.5"
+  }
+}
